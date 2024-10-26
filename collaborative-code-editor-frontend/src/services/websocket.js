@@ -1,4 +1,5 @@
-import { Client } from '@stomp/stompjs';
+import { Client } from '@stomp/stomps';
+
 import SockJS from 'sockjs-client';
 
 class WebSocketService {

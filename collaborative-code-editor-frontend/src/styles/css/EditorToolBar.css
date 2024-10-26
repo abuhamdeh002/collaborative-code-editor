@@ -1,0 +1,22 @@
+/* src/components/EditorToolbar.css */
+.editor-toolbar {
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem;
+  background-color: var(--background-dark);
+  color: var(--text-color-light);
+  border-bottom: 1px solid var(--secondary-color);
+}
+
+.editor-toolbar button {
+  background-color: var(--primary-color);
+  border: none;
+  padding: 0.5rem 1rem;
+  color: var(--text-color-light);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.editor-toolbar button:hover {
+  background-color: var(--secondary-color);
+}

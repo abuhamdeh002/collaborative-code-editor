@@ -1,168 +1,131 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import MonacoEditor from '@monaco-editor/react';
-import { Box, Paper, Snackbar, Alert } from '@mui/material';
-import { useAuth } from '../context/AuthContext';
-import EditorToolbar from '../components/EditorToolbar';
-import websocketService from '../services/websocket';
-import { projectApi, executionApi } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { EditorToolbar } from '../components/EditorToolbar';
+import { Card } from '../ui/Card';
+import Textarea from '../ui/Textarea';
 
-function Editor() {
-    const { projectId } = useParams();
-    const { user } = useAuth();
-    const [code, setCode] = useState('');
-    const [language, setLanguage] = useState('javascript');
-    const [isConnected, setIsConnected] = useState(false);
-    const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
-    const editorRef = useRef(null);
-    const lastChangeRef = useRef(null);
+export const Editor = ({ projectId }) => {
+  const [code, setCode] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [output, setOutput] = useState('');
+  const [collaborators, setCollaborators] = useState([]);
+  const [ws, setWs] = useState(null);
 
-    useEffect(() => {
-        // Initialize WebSocket connection
-        const token = localStorage.getItem('token');
-        websocketService.setConnectionCallback(setIsConnected);
-        websocketService.connect(token);
+  useEffect(() => {
+    // Set up WebSocket connection
+    const websocket = new WebSocket(`ws://localhost:8080/editor/${projectId}`);
 
-        // Subscribe to project updates
-        const topic = `/topic/project/${projectId}`;
-        websocketService.subscribe(topic, handleRemoteChange);
+    websocket.onopen = () => {
+      console.log('Connected to editor WebSocket');
+    };
 
-        // Load initial project content
-        loadProjectContent();
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'CODE_UPDATE':
+          setCode(data.content);
+          break;
+        case 'COLLABORATOR_UPDATE':
+          setCollaborators(data.collaborators);
+          break;
+        default:
+          console.log('Unknown message type:', data.type);
+      }
+    };
 
-        return () => {
-            websocketService.unsubscribe(topic);
-            websocketService.disconnect();
-        };
-    }, [projectId]);
+    setWs(websocket);
 
-    const loadProjectContent = async () => {
-        try {
-            const response = await projectApi.getProjectContent(projectId);
-            setCode(response.data.content);
-            setLanguage(response.data.language || 'javascript');
-        } catch (error) {
-            showNotification('Error loading project content', 'error');
+    return () => {
+      websocket.close();
+    };
+  }, [projectId]);
+
+  const handleCodeChange = (newCode) => {
+    setCode(newCode);
+    if (ws) {
+      ws.send(
+        JSON.stringify({
+          type: 'CODE_UPDATE',
+          content: newCode,
+        })
+      );
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8080/api/projects/${projectId}/save`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({ code }),
         }
-    };
+      );
 
-    const handleEditorDidMount = (editor, monaco) => {
-        editorRef.current = editor;
-    };
+      if (!response.ok) throw new Error('Failed to save');
+    } catch (error) {
+      console.error('Save error:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const handleEditorChange = (value, event) => {
-        if (!websocketService.isConnected()) return;
+  const handleRun = async () => {
+    setRunning(true);
+    setOutput('');
+    try {
+      const response = await fetch('http://localhost:8080/api/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ code }),
+      });
 
-        // Debounce changes
-        if (lastChangeRef.current) {
-            clearTimeout(lastChangeRef.current);
-        }
+      if (!response.ok) throw new Error('Execution failed');
 
-        lastChangeRef.current = setTimeout(() => {
-            const change = {
-                projectId,
-                userId: user.id,
-                content: value,
-                timestamp: new Date().toISOString(),
-            };
+      const result = await response.json();
+      setOutput(result.output);
+    } catch (error) {
+      setOutput(`Error: ${error.message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
 
-            websocketService.send(`/app/project/${projectId}/change`, change);
-        }, 500);
-    };
+  return (
+    <div className="h-full flex flex-col">
+      <EditorToolbar
+        onSave={handleSave}
+        onRun={handleRun}
+        saving={saving}
+        running={running}
+        collaborators={collaborators}
+      />
 
-    const handleRemoteChange = (change) => {
-        if (change.userId !== user.id) {
-            setCode(change.content);
-        }
-    };
+      <div className="flex-1 flex gap-4 p-4">
+        <Card className="flex-1">
+          <Textarea
+            value={code}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            className="w-full h-full font-mono p-4 resize-none"
+            placeholder="Write your code here..."
+          />
+        </Card>
 
-    const handleSave = async () => {
-        try {
-            await projectApi.updateProjectContent(projectId, code);
-            showNotification('Project saved successfully', 'success');
-        } catch (error) {
-            showNotification('Error saving project', 'error');
-        }
-    };
-
-    const handleRun = async () => {
-        try {
-            const response = await executionApi.executeCode(projectId, language);
-            const executionId = response.data.executionId;
-
-            // Poll for execution result
-            const pollResult = async () => {
-                const result = await executionApi.getExecutionResult(executionId);
-                if (result.data.status === 'COMPLETED') {
-                    showNotification('Code executed successfully', 'success');
-                    // Handle output display
-                } else if (result.data.status === 'FAILED') {
-                    showNotification(result.data.error, 'error');
-                } else {
-                    setTimeout(pollResult, 1000);
-                }
-            };
-
-            pollResult();
-        } catch (error) {
-            showNotification('Error executing code', 'error');
-        }
-    };
-
-    const showNotification = (message, severity = 'info') => {
-        setNotification({
-            open: true,
-            message,
-            severity,
-        });
-    };
-
-    const handleCloseNotification = () => {
-        setNotification(prev => ({ ...prev, open: false }));
-    };
-
-    return (
-        <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-            <EditorToolbar
-                isConnected={isConnected}
-                onSave={handleSave}
-                onRun={handleRun}
-                language={language}
-                onLanguageChange={setLanguage}
-            />
-
-            <Paper elevation={3} sx={{ flex: 1, borderRadius: 1, overflow: 'hidden' }}>
-                <MonacoEditor
-                    height="100%"
-                    language={language}
-                    value={code}
-                    onChange={handleEditorChange}
-                    onMount={handleEditorDidMount}
-                    theme="vs-dark"
-                    options={{
-                        minimap: { enabled: true },
-                        fontSize: 14,
-                        wordWrap: 'on',
-                        automaticLayout: true,
-                        tabSize: 2,
-                        formatOnPaste: true,
-                        formatOnType: true,
-                    }}
-                />
-            </Paper>
-
-            <Snackbar
-                open={notification.open}
-                autoHideDuration={6000}
-                onClose={handleCloseNotification}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            >
-                <Alert onClose={handleCloseNotification} severity={notification.severity}>
-                    {notification.message}
-                </Alert>
-            </Snackbar>
-        </Box>
-    );
-}
-
-export default Editor;
+        {output && (
+          <Card className="w-1/3 p-4">
+            <h3 className="font-semibold mb-2">Output</h3>
+            <pre className="whitespace-pre-wrap">{output}</pre>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+};

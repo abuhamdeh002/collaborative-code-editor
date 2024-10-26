@@ -1,66 +1,72 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8080/api';
-
-const api = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-});
-
-// Request interceptor to add auth token
-api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers['Authorization'] = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
-);
-
-// Response interceptor to handle errors
-api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem('token');
-            window.location.href = '/login';
-        }
-        return Promise.reject(error);
-    }
-);
+// services/api.js
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
 export const projectApi = {
-    getProjects: () => api.get('/projects'),
-    getProject: (id) => api.get(`/projects/${id}`),
-    createProject: (data) => api.post('/projects', data),
-    updateProject: (id, data) => api.put(`/projects/${id}`, data),
-    deleteProject: (id) => api.delete(`/projects/${id}`),
-    getProjectContent: (id) => api.get(`/projects/${id}/content`),
-    updateProjectContent: (id, content) => api.put(`/projects/${id}/content`, { content }),
+  // Project related endpoints
+  fetchProjects: async () => {
+    const response = await fetch(`${BASE_URL}/projects`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch projects');
+    return response.json();
+  },
+
+  createProject: async (projectData) => {
+    const response = await fetch(`${BASE_URL}/projects`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(projectData),
+    });
+    if (!response.ok) throw new Error('Failed to create project');
+    return response.json();
+  },
+
+  updateProject: async (projectId, projectData) => {
+    const response = await fetch(`${BASE_URL}/projects/${projectId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(projectData),
+    });
+    if (!response.ok) throw new Error('Failed to update project');
+    return response.json();
+  },
+
+  deleteProject: async (projectId) => {
+    const response = await fetch(`${BASE_URL}/projects/${projectId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!response.ok) throw new Error('Failed to delete project');
+    return response.json();
+  },
+
+  // File related endpoints
+  getFileContent: async (projectId, fileId) => {
+    const response = await fetch(`${BASE_URL}/projects/${projectId}/files/${fileId}`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch file content');
+    return response.json();
+  },
+
+  updateFileContent: async (projectId, fileId, content) => {
+    const response = await fetch(`${BASE_URL}/projects/${projectId}/files/${fileId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to update file content');
+    return response.json();
+  }
 };
 
-export const authApi = {
-    login: (credentials) => api.post('/auth/login', credentials),
-    register: (userData) => api.post('/auth/register', userData),
-    getCurrentUser: () => api.get('/auth/me'),
-    logout: () => api.post('/auth/logout'),
-};
-
-export const executionApi = {
-    executeCode: (projectId, language) =>
-        api.post(`/execution/${projectId}`, { language }),
-    getExecutionResult: (executionId) =>
-        api.get(`/execution/result/${executionId}`),
-};
-
-export default {
-    project: projectApi,
-    auth: authApi,
-    execution: executionApi,
-};
+export default projectApi;

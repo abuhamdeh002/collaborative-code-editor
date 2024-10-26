@@ -1,51 +1,26 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Box,
-} from '@mui/material';
-import { useAuth } from '../context/AuthContext';
+// src/components/NavBar.js
+import React, { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
+import './NavBar.css';
 
-function NavBar() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+const NavBar = () => {
+  const { user, logout } = useContext(AuthContext);
 
   return (
-    <AppBar position="static">
-      <Toolbar>
-        <Typography
-          variant="h6"
-          component="div"
-          sx={{ flexGrow: 1, cursor: 'pointer' }}
-          onClick={() => navigate('/')}
-        >
-          Code Editor
-        </Typography>
+    <nav className="navbar">
+      <div className="navbar-logo">Collaborative Editor</div>
+      <div className="navbar-links">
         {user ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body1">
-              {user.email}
-            </Typography>
-            <Button color="inherit" onClick={handleLogout}>
-              Logout
-            </Button>
-          </Box>
+          <>
+            <span className="navbar-user">{user.name}</span>
+            <button onClick={logout} className="navbar-logout">Logout</button>
+          </>
         ) : (
-          <Button color="inherit" onClick={() => navigate('/login')}>
-            Login
-          </Button>
+          <span>Login</span>
         )}
-      </Toolbar>
-    </AppBar>
+      </div>
+    </nav>
   );
-}
+};
 
 export default NavBar;

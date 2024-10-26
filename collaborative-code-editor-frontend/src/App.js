@@ -1,56 +1,26 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material';
-import CssBaseline from '@mui/material/CssBaseline';
-import NavBar from './components/NavBar';
-import Editor from './pages/Editor';
-import Login from './pages/Login';
-import ProjectList from './pages/ProjectList';
-import { AuthProvider } from './context/AuthContext';
-import PrivateRoute from './components/PrivateRoute';
-
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#90caf9',
-    },
-    secondary: {
-      main: '#f48fb1',
-    },
-  },
-});
+import { useEffect } from 'react';
+import SockJS from 'sockjs-client';
+import Stomp from 'stompjs';
 
 function App() {
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <Router>
-          <NavBar />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/editor/:projectId"
-              element={
-                <PrivateRoute>
-                  <Editor />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <ProjectList />
-                </PrivateRoute>
-              }
-            />
-          </Routes>
-        </Router>
-      </AuthProvider>
-    </ThemeProvider>
-  );
+    useEffect(() => {
+        const socket = new SockJS('http://localhost:8080/ws');
+        const stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, (frame) => {
+            console.log('Connected: ' + frame);
+
+            stompClient.subscribe('/topic/code', (message) => {
+                console.log('Received message: ', JSON.parse(message.body));
+            });
+        });
+
+        return () => {
+            if (stompClient) stompClient.disconnect();
+        };
+    }, []);
+
+    return <div>Collaborative Code Editor</div>;
 }
 
 export default App;
